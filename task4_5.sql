@@ -69,13 +69,18 @@ FROM guests g1
 JOIN guests g2 ON g1.last_name = g2.last_name AND g1.id < g2.id
 ORDER BY g1.last_name;
 
--- =========================
+
 -- 2. Операции над множествами
--- =========================
+
 
 -- 2.1 UNION: список уникальных имён поставщиков и гостей (без дубликатов)
 SELECT name AS person_or_supplier FROM suppliers
-UNION
+UNIONECT oi.order_id,
+       d.name AS dish_name,
+       oi.quantity,
+       d.price,
+       (oi.quantity * d.price) AS line_total
+FROM order_items oi
 SELECT last_name || ' ' || first_name FROM guests;
 
 -- 2.2 UNION ALL: тот же список, но с сохранением дубликатов
@@ -122,11 +127,11 @@ WHERE d.price > ANY (SELECT price FROM dishes WHERE category = 'Салат');
 
 -- 3.4 BETWEEN: бронирования в диапазоне дат
 SELECT * FROM bookings
-WHERE booking_date BETWEEN '2025-10-01' AND '2025-10-31';
+WHERE booking_date BETWEEN '2024-01-01' AND '2024-02-01';
 
 -- 3.5 LIKE и ILIKE: поиск блюд по шаблону (чувствительный и нечувствительный к регистру)
-SELECT * FROM dishes WHERE name LIKE '%пицца%';    -- регистр зависит от локали
-SELECT * FROM dishes WHERE name ILIKE '%пицца%';   -- регистр игнорируется
+SELECT * FROM dishes WHERE name ILIKE '%паста%' OR name ILIKE '%салат%';
+SELECT * FROM dishes WHERE name LIKE '%борщ%' OR name ILIKE '%том%';
 
 
 -- 4. CASE выражения
@@ -171,9 +176,9 @@ FROM orders o
 LEFT JOIN payments p ON p.order_id = o.id
 ORDER BY o.id;
 
--- =========================
+
 -- 6. Функции для работы со строками
--- =========================
+
 
 -- 6.1 LENGTH, LOWER, UPPER, BTRIM, LTRIM
 SELECT name,
@@ -253,6 +258,7 @@ GROUP BY w.id, waiter_name
 ORDER BY total_sales DESC NULLS LAST;
 
 -- 8.2 HAVING: официанты с общей выручкой больше 1000
+
 SELECT w.id, w.last_name || ' ' || w.first_name AS waiter_name, SUM(o.total_amount) AS total_sales
 FROM waiters w
 JOIN orders o ON o.waiter_id = w.id
