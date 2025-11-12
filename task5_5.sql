@@ -6,23 +6,16 @@ DROP INDEX IF EXISTS idx_guests_lastname;
 CREATE INDEX idx_guests_lastname ON guests USING BTREE (last_name);
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM guests WHERE last_name = 'Иванов';
+SELECT last_name FROM guests WHERE last_name = 'Иванов';
 
 
 -- 1.2 Уникальный индекс
--- Уникальный email гостя
-DROP INDEX IF EXISTS idx_guests_email_unique;
-CREATE UNIQUE INDEX idx_guests_email_unique ON guests USING BTREE (email);
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM guests WHERE email = 'test@example.com';
-
 -- Уникальный номер стола
 DROP INDEX IF EXISTS idx_tables_tablenumber_unique;
 CREATE UNIQUE INDEX idx_tables_tablenumber_unique ON tables USING BTREE (table_number);
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM tables WHERE table_number = 5;
+SELECT table_number FROM tables WHERE table_number = 5;
 
 
 -- 1.3 Составной индекс
@@ -31,37 +24,16 @@ DROP INDEX IF EXISTS idx_orders_guest_time;
 CREATE INDEX idx_orders_guest_time ON orders USING BTREE (guest_id, order_time);
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM orders WHERE guest_id = 100 AND order_time >= '2025-11-01';
-
--- Для поиска официантов по фамилии и имени
-DROP INDEX IF EXISTS idx_waiters_name;
-CREATE INDEX idx_waiters_name ON waiters USING BTREE (last_name, first_name);
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM waiters WHERE last_name = 'Петров' AND first_name = 'Иван';
+SELECT guest_id, order_time FROM orders WHERE guest_id = 100 AND order_time >= '2025-11-01';
 
 
 -- 1.4 Индекс с выражением
--- Поиск по нижнему регистру имени блюда
-DROP INDEX IF EXISTS idx_dishes_name_lower;
-CREATE INDEX idx_dishes_name_lower ON dishes USING BTREE (LOWER(name));
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM dishes WHERE LOWER(name) LIKE '%салат%';
-
--- Поиск по усечённому времени заказа (до часа)
-DROP INDEX IF EXISTS idx_orders_ordertime_hour;
-CREATE INDEX idx_orders_ordertime_hour ON orders USING BTREE (date_trunc('hour', order_time));
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM orders WHERE date_trunc('hour', order_time) >= '2025-11-01 10:00:00';
-
 -- Извлечение года из даты рождения гостя
 DROP INDEX IF EXISTS idx_guests_birth_year;
 CREATE INDEX idx_guests_birth_year ON guests USING BTREE (DATE_PART('year', birth_date));
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM guests WHERE DATE_PART('year', birth_date) = 1990;
+SELECT birth_date FROM guests WHERE DATE_PART('year', birth_date) = 1990;
 
 
 -- 1.5 Покрывающий индекс (INCLUDE)
@@ -97,7 +69,7 @@ CREATE INDEX idx_orders_paid ON orders USING BTREE (order_time)
 WHERE status = 'paid';
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM orders WHERE status = 'paid' AND order_time >= '2025-11-01';
+SELECT status, order_time FROM orders WHERE status = 'paid' AND order_time >= '2025-11-01';
 
 -- Только активные столы
 DROP INDEX IF EXISTS idx_tables_available;
@@ -105,7 +77,7 @@ CREATE INDEX idx_tables_available ON tables USING BTREE (seats)
 WHERE status = 'available';
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM tables WHERE status = 'available' AND seats >= 4;
+SELECT status, seats FROM tables WHERE status = 'available' AND seats >= 4;
 
 -- Только блюда основного меню с высокой ценой
 DROP INDEX IF EXISTS idx_dishes_expensive_main;
@@ -149,20 +121,20 @@ SELECT name, price FROM dishes WHERE category = 'Main' AND price > 1000;
 -- 2. HASH ИНДЕКСЫ
 
 -- 2.1 Простой Hash индекс
--- Для точного поиска по email
-DROP INDEX IF EXISTS idx_guests_email_hash;
-CREATE INDEX idx_guests_email_hash ON guests USING HASH (email);
+-- Для точного поиска по фамилии
+DROP INDEX IF EXISTS idx_guests_lastname_hash;
+CREATE INDEX idx_guests_lastname_hash ON guests USING HASH (last_name);
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM guests WHERE email = 'test@example.com';
+SELECT last_name FROM guests WHERE last_name = 'Петров';
 
 -- Для поиска по статусу заказа
+SET enable_seqscan = OFF;
 DROP INDEX IF EXISTS idx_orders_status_hash;
 CREATE INDEX idx_orders_status_hash ON orders USING HASH (status);
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM orders WHERE status = 'paid';
-
+SELECT status FROM orders WHERE status = 'paid';
 
 -- 2.2 Индекс Hash с выражением
 -- Поиск по году рождения гостя
@@ -170,15 +142,7 @@ DROP INDEX IF EXISTS idx_guests_birth_year_hash;
 CREATE INDEX idx_guests_birth_year_hash ON guests USING HASH (DATE_PART('year', birth_date));
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM guests WHERE DATE_PART('year', birth_date) = 1990;
-
--- Поиск по нижнему регистру категории блюда
-DROP INDEX IF EXISTS idx_dishes_category_lower_hash;
-CREATE INDEX idx_dishes_category_lower_hash ON dishes USING HASH (LOWER(category));
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM dishes WHERE LOWER(category) = 'main';
-
+SELECT birth_date FROM guests WHERE DATE_PART('year', birth_date) = 1990;
 
 -- 2.3 Частичный Hash индекс
 -- Hash индекс только для оплаченных заказов
@@ -187,7 +151,7 @@ CREATE INDEX idx_orders_paid_status_hash ON orders USING HASH (guest_id)
 WHERE status = 'paid';
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM orders WHERE status = 'paid' AND guest_id = 100;
+SELECT status, guest_id FROM orders WHERE status = 'paid' AND guest_id = 100;
 
 -- Hash индекс для доступных столов
 DROP INDEX IF EXISTS idx_tables_available_hash;
@@ -195,7 +159,7 @@ CREATE INDEX idx_tables_available_hash ON tables USING HASH (table_number)
 WHERE status = 'available';
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM tables WHERE status = 'available' AND table_number = 5;
+SELECT status, table_number FROM tables WHERE status = 'available' AND table_number = 5;
 
 -- ЗАПРОСЫ ДЛЯ ДЕМОНСТРАЦИИ ИНДЕКСОВ
 
@@ -220,7 +184,7 @@ WHERE d.category = 'Main';
 -- 2. Фильтрация с предикатами
 -- EXISTS
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM guests g
+SELECT guest_id, status FROM guests g
 WHERE EXISTS (
     SELECT 1 FROM orders o 
     WHERE o.guest_id = g.id AND o.status = 'paid'
@@ -229,30 +193,30 @@ WHERE EXISTS (
 
 -- IN
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM dishes
+SELECT category FROM dishes
 WHERE category IN ('Main', 'Dessert', 'Starter');
 -- Использует: idx_dishes_category_covering
 
 -- BETWEEN
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM orders
+SELECT order_time FROM orders
 WHERE order_time BETWEEN '2025-11-01' AND '2025-11-30';
 -- Использует: idx_orders_time_covering
 
 -- LIKE / ILIKE
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM dishes
+SELECT name FROM dishes
 WHERE LOWER(name) LIKE '%салат%';
 -- Использует: idx_dishes_name_lower
 
 -- ALL / ANY
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM dishes
+SELECT price, category FROM dishes
 WHERE price > ALL (SELECT price FROM dishes WHERE category = 'Starter');
 
 -- SOME/ANY
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM dishes
+SELECT price, category FROM dishes
 WHERE price > ANY (SELECT price FROM dishes WHERE category = 'Dessert');
 
 
@@ -269,7 +233,7 @@ DROP INDEX IF EXISTS idx_dishes_name_substr;
 CREATE INDEX idx_dishes_name_substr ON dishes (SUBSTRING(name, 1, 5));
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM dishes
+SELECT name FROM dishes
 WHERE SUBSTRING(name, 1, 5) = 'Цезар';
 -- Использует: idx_dishes_name_substr
 
@@ -284,13 +248,13 @@ WHERE category = 'Main';
 -- 4. Функции даты и времени
 -- DATE_PART
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM guests
+SELECT birth_date FROM guests
 WHERE DATE_PART('year', birth_date) = 1990;
 -- Использует: idx_guests_birth_year или idx_guests_birth_year_hash
 
 -- Арифметические операции с датами
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM orders
+SELECT order_time FROM orders
 WHERE order_time >= CURRENT_TIMESTAMP - INTERVAL '7 days';
 -- Использует: idx_orders_time_covering
 
@@ -305,7 +269,7 @@ GROUP BY order_hour;
 
 -- CURRENT_TIMESTAMP с уточнением временной зоны
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM orders
+SELECT order_time FROM orders
 WHERE order_time >= CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - INTERVAL '1 day';
 
 
@@ -333,7 +297,7 @@ HAVING AVG(total_amount) > 1000;
 -- 6. Вложенные запросы
 -- Подзапрос с частичным индексом
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM guests
+SELECT id, guest_id, status, total_amount FROM guests
 WHERE id IN (
     SELECT DISTINCT guest_id 
     FROM orders 
@@ -366,7 +330,7 @@ INTERSECT
 SELECT guest_id FROM orders WHERE status = 'paid' AND total_amount > 2000;
 -- Использует: idx_orders_paid_covering
 
--- СРАВНЕНИЕ: ЧАСТИЧНЫЙ VS ЧАСТИЧНЫЙ ПОКРЫВАЮЩИЙ
+-- СРАВНЕНИЕ: ЧАСТИЧНЫЙ И ЧАСТИЧНЫЙ ПОКРЫВАЮЩИЙ
 
 -- 1. Частичный индекс (только индексирует условие)
 DROP INDEX IF EXISTS idx_orders_paid_partial;
