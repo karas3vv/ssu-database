@@ -11,11 +11,20 @@ SELECT last_name FROM guests WHERE last_name = 'Иванов';
 
 -- 1.2 Уникальный индекс
 -- Уникальный номер стола
-DROP INDEX IF EXISTS idx_tables_tablenumber_unique;
-CREATE UNIQUE INDEX idx_tables_tablenumber_unique ON tables USING BTREE (table_number);
+
+DROP INDEX IF EXISTS idx_guests_id_unique;
+CREATE UNIQUE INDEX idx_guests_id_unique 
+ON guests USING BTREE (id);
+
+SET enable_indexscan = ON;
+SET enable_bitmapscan = ON;
+SET enable_indexonlyscan = ON;
+SET enable_seqscan = OFF;
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT table_number FROM tables WHERE table_number = 5;
+SELECT id, first_name, last_name, birth_date 
+FROM guests 
+WHERE id IN (100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500);
 
 
 -- 1.3 Составной индекс
@@ -37,14 +46,6 @@ SELECT birth_date FROM guests WHERE DATE_PART('year', birth_date) = 1990;
 
 
 -- 1.5 Покрывающий индекс (INCLUDE)
--- Покрывает запрос: SELECT name, price FROM dishes WHERE category = 'Main'
-DROP INDEX IF EXISTS idx_dishes_category_covering;
-CREATE INDEX idx_dishes_category_covering ON dishes USING BTREE (category) 
-INCLUDE (name, price, country_of_origin);
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT name, price FROM dishes WHERE category = 'Main';
-
 -- Покрывает: SELECT guest_id, total_amount FROM orders WHERE order_time >= ... AND order_time < ...
 DROP INDEX IF EXISTS idx_orders_time_covering;
 CREATE INDEX idx_orders_time_covering ON orders USING BTREE (order_time) 
@@ -52,14 +53,6 @@ INCLUDE (guest_id, table_id, waiter_id, total_amount, status);
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
 SELECT guest_id, total_amount FROM orders WHERE order_time >= '2025-11-01' AND order_time < '2025-12-01';
-
--- Покрывает запросы по гостю с полным именем
-DROP INDEX IF EXISTS idx_guests_id_covering;
-CREATE INDEX idx_guests_id_covering ON guests USING BTREE (id) 
-INCLUDE (last_name, first_name, middle_name, total_orders, total_discount);
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT last_name, first_name, middle_name FROM guests WHERE id = 100;
 
 
 -- 1.6 Частичный индекс
@@ -69,54 +62,20 @@ CREATE INDEX idx_orders_paid ON orders USING BTREE (order_time)
 WHERE status = 'paid';
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT status, order_time FROM orders WHERE status = 'paid' AND order_time >= '2025-11-01';
-
--- Только активные столы
-DROP INDEX IF EXISTS idx_tables_available;
-CREATE INDEX idx_tables_available ON tables USING BTREE (seats) 
-WHERE status = 'available';
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT status, seats FROM tables WHERE status = 'available' AND seats >= 4;
-
--- Только блюда основного меню с высокой ценой
-DROP INDEX IF EXISTS idx_dishes_expensive_main;
-CREATE INDEX idx_dishes_expensive_main ON dishes USING BTREE (price) 
-WHERE category = 'Main' AND price > 1000;
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT * FROM dishes WHERE category = 'Main' AND price > 1000;
+SELECT status, order_time FROM orders WHERE status = 'paid' AND guest_id = 100;
 
 
 -- 1.7 Частичный покрывающий индекс
 -- Покрывает запросы по оплаченным заказам с полной информацией
-DROP INDEX IF EXISTS idx_orders_paid_covering;
-CREATE INDEX idx_orders_paid_covering ON orders USING BTREE (order_time) 
-INCLUDE (guest_id, table_id, waiter_id, total_amount) 
+DROP INDEX IF EXISTS idx_orders_paid_partial;
+CREATE INDEX idx_orders_paid_covering ON orders (order_time) 
+INCLUDE (guest_id, table_id, total_amount) 
 WHERE status = 'paid';
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT guest_id, table_id, total_amount FROM orders 
-WHERE status = 'paid' AND order_time >= '2025-11-01';
-
--- Покрывает запросы по доступным столам
-DROP INDEX IF EXISTS idx_tables_available_covering;
-CREATE INDEX idx_tables_available_covering ON tables USING BTREE (seats) 
-INCLUDE (table_number, status) 
-WHERE status = 'available';
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT table_number, seats FROM tables WHERE status = 'available';
-
--- Только дорогие блюда категории Main с полной информацией
-DROP INDEX IF EXISTS idx_dishes_expensive_covering;
-CREATE INDEX idx_dishes_expensive_covering ON dishes USING BTREE (category, price) 
-INCLUDE (name, country_of_origin) 
-WHERE category = 'Main' AND price > 1000;
-
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT name, price FROM dishes WHERE category = 'Main' AND price > 1000;
-
+SELECT guest_id, table_id, order_time, total_amount 
+FROM orders 
+WHERE status = 'paid' AND order_time >= '2025-10-01' AND order_time < '2025-10-15';
 
 -- 2. HASH ИНДЕКСЫ
 
@@ -184,7 +143,7 @@ WHERE d.category = 'Main';
 -- 2. Фильтрация с предикатами
 -- EXISTS
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT guest_id, status FROM guests g
+SELECT guest_id, status FROM guests
 WHERE EXISTS (
     SELECT 1 FROM orders o 
     WHERE o.guest_id = g.id AND o.status = 'paid'
