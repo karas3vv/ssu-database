@@ -92,7 +92,7 @@ CREATE INDEX idx_guests_lastname_hash ON guests USING HASH (last_name);
 ```sql
 SELECT id, first_name, last_name, birth_date 
 FROM guests 
-WHERE id IN (100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500);
+WHERE id = 100;
 ```
 
 == Выполнение без индексов
@@ -105,7 +105,8 @@ WHERE id IN (100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500);
 ```sql
 DROP INDEX IF EXISTS idx_guests_id_unique;
 CREATE UNIQUE INDEX idx_guests_id_unique 
-ON guests USING BTREE (id);
+ON guests USING BTREE (id)
+INCLUDE (first_name, last_name, birth_date);
 ```
 
 == Выполнение с индексами B-Tree
@@ -143,7 +144,7 @@ CREATE INDEX idx_orders_guest_time ON orders USING BTREE (guest_id, order_time);
 == Код запроса
 
 ```sql
-SELECT * FROM guests WHERE DATE_PART('year', birth_date) = 1990;
+SELECT birth_date FROM guests WHERE DATE_PART('year', birth_date) = 1990;
 ```
 
 == Выполнение без индексов
@@ -180,7 +181,8 @@ CREATE INDEX idx_guests_birth_year_hash ON guests USING HASH (DATE_PART('year', 
 == Код запроса
 
 ```sql
-SELECT name, price FROM dishes WHERE category = 'Main';
+EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
+SELECT * FROM orders WHERE order_time = '2025-11-01';
 ```
 
 == Выполнение без индексов
@@ -191,9 +193,8 @@ SELECT name, price FROM dishes WHERE category = 'Main';
 == Код индекса B-Tree
 
 ```sql
-DROP INDEX IF EXISTS idx_dishes_category_covering;
-CREATE INDEX idx_dishes_category_covering ON dishes USING BTREE (category) 
-INCLUDE (name, price, country_of_origin);
+CREATE INDEX idx_orders_time_covering ON orders USING BTREE (order_time) 
+INCLUDE (guest_id, table_id, waiter_id, total_amount, status);
 ```
 
 == Выполнение с индексами B-Tree
@@ -218,14 +219,15 @@ SELECT status, order_time FROM orders WHERE status = 'paid' AND guest_id = 100;
 
 ```sql
 DROP INDEX IF EXISTS idx_orders_paid;
-CREATE INDEX idx_orders_paid ON orders USING BTREE (order_time) 
-WHERE status = 'paid';
+CREATE INDEX idx_orders_paid ON orders USING BTREE (guest_id) 
+WHERE status = 'paid' AND guest_id = 100;
 ```
 
 == Выполнение с индексами B-Tree
 
 #image("image14-1.png")
 #image("image14-2.png")
+
 == Код индекса Hash
 
 ```sql
@@ -257,7 +259,8 @@ WHERE status = 'paid' AND order_time >= '2025-11-01';
 
 ```sql
 DROP INDEX IF EXISTS idx_orders_paid_partial;
-CREATE INDEX idx_orders_paid_partial ON orders (order_time) 
+CREATE INDEX idx_orders_paid_covering ON orders (order_time) 
+INCLUDE (guest_id, table_id, total_amount) 
 WHERE status = 'paid';
 ```
 

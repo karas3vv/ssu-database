@@ -10,21 +10,23 @@ SELECT last_name FROM guests WHERE last_name = 'Иванов';
 
 
 -- 1.2 Уникальный индекс
--- Уникальный номер стола
-
+-- Поиск гостя по id 
 DROP INDEX IF EXISTS idx_guests_id_unique;
 CREATE UNIQUE INDEX idx_guests_id_unique 
-ON guests USING BTREE (id);
+ON guests USING BTREE (id)
+INCLUDE (first_name, last_name, birth_date);
 
 SET enable_indexscan = ON;
 SET enable_bitmapscan = ON;
 SET enable_indexonlyscan = ON;
 SET enable_seqscan = OFF;
 
+
+
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
 SELECT id, first_name, last_name, birth_date 
 FROM guests 
-WHERE id IN (100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500);
+WHERE id =100;
 
 
 -- 1.3 Составной индекс
@@ -52,17 +54,20 @@ CREATE INDEX idx_orders_time_covering ON orders USING BTREE (order_time)
 INCLUDE (guest_id, table_id, waiter_id, total_amount, status);
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT guest_id, total_amount FROM orders WHERE order_time >= '2025-11-01' AND order_time < '2025-12-01';
+SELECT * FROM orders WHERE order_time >= '2025-11-01' AND order_time < '2025-12-01';
+
+EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
+SELECT * FROM orders WHERE order_time = '2025-11-01';
 
 
 -- 1.6 Частичный индекс
 -- Только оплаченные заказы
 DROP INDEX IF EXISTS idx_orders_paid;
-CREATE INDEX idx_orders_paid ON orders USING BTREE (order_time) 
-WHERE status = 'paid';
+CREATE INDEX idx_orders_paid ON orders USING BTREE (guest_id) 
+WHERE status = 'paid'
 
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT status, order_time FROM orders WHERE status = 'paid' AND guest_id = 100;
+SELECT * FROM orders WHERE status = 'paid' AND guest_id = 100;
 
 
 -- 1.7 Частичный покрывающий индекс
@@ -76,6 +81,11 @@ EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
 SELECT guest_id, table_id, order_time, total_amount 
 FROM orders 
 WHERE status = 'paid' AND order_time >= '2025-10-01' AND order_time < '2025-10-15';
+
+EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
+SELECT guest_id, table_id, order_time, total_amount 
+FROM orders 
+WHERE status = 'paid' AND order_time = '2025-10-01';
 
 -- 2. HASH ИНДЕКСЫ
 
@@ -143,7 +153,7 @@ WHERE d.category = 'Main';
 -- 2. Фильтрация с предикатами
 -- EXISTS
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT guest_id, status FROM guests
+SELECT guest_id, status FROM guests g
 WHERE EXISTS (
     SELECT 1 FROM orders o 
     WHERE o.guest_id = g.id AND o.status = 'paid'

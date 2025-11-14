@@ -93,7 +93,7 @@ for i in range(1, 100001):
             fake.date_time_this_year(before_now=True, after_now=False),
             round(random.uniform(300, 10000), 2),
             random.choice(['created', 'paid', 'cancelled']),
-            None  # при необходимости сгенерируйте bookingid
+            None  # при необходимости сгенерируйте booking_id
         )
     )
 
