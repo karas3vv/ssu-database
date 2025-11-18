@@ -93,7 +93,7 @@ DELETE FROM v_adult_guests_cascaded
 WHERE id = 99903;
 
 -- для проверки 
-SELECT * FROM v_adult_guests_cascaded;
+SELECT * FROM v_adult_guests_cascaded WHERE id = 99903;
 
 
 

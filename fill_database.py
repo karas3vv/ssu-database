@@ -13,6 +13,13 @@ conn = psycopg2.connect(
 )
 cur = conn.cursor()
 
+# 0. Очистка всех таблиц
+cur.execute("""
+    TRUNCATE order_items, orders, dishes, tables, waiters, guests 
+    RESTART IDENTITY CASCADE;
+""")
+conn.commit()
+
 # 1. Гости
 for i in range(1, 5001):
     cur.execute(
@@ -96,6 +103,25 @@ for i in range(1, 100001):
             None  # при необходимости сгенерируйте booking_id
         )
     )
+
+# 6. Строки заказов (order_items)
+# На каждый заказ добавим 1–5 случайных блюд
+for order_id in range(1, 100001):
+    num_items = random.randint(1, 5)
+    for _ in range(num_items):
+        dish_id = random.randint(1, 300)
+        quantity = random.randint(1, 4)
+
+        cur.execute(
+            """
+            INSERT INTO order_items (order_id, dish_id, quantity)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (order_id, dish_id) DO UPDATE
+                SET quantity = order_items.quantity + EXCLUDED.quantity
+            """,
+            (order_id, dish_id, quantity)
+        )
+
 
 conn.commit()
 cur.close()
