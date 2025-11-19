@@ -26,7 +26,7 @@ SET enable_seqscan = OFF;
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
 SELECT id, first_name, last_name, birth_date 
 FROM guests 
-WHERE id =100;
+WHERE id = 100;
 
 
 -- 1.3 Составной индекс

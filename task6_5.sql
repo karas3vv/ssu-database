@@ -50,50 +50,60 @@ SELECT * FROM v_guests_expenses ORDER BY total_spent DESC;
 
 -- 2.1 основное view (гости старше 25 лет)
 CREATE OR REPLACE VIEW v_adult_guests AS
-SELECT *
-FROM guests
-WHERE birth_date <= CURRENT_DATE - INTERVAL '25 years';
+SELECT * FROM guests
+WHERE birth_date <= (CURRENT_DATE - INTERVAL '25 years');
 
 -- для проверки 
 SELECT * FROM v_adult_guests;
 
--- 2.2 LOCAL CHECK OPTION
+-- 2.2 LOCAL CHECK OPTION (гости моложе 60 лет)
 CREATE OR REPLACE VIEW v_adult_guests_local AS
 SELECT * FROM v_adult_guests
+WHERE birth_date >= (CURRENT_DATE - INTERVAL '60 years')
 WITH LOCAL CHECK OPTION;
 
--- для проверки 
-SELECT * FROM v_adult_guests_local;
+-- тесты 
+-- успешно - проходит проверку v_adult_guests_local (возраст между 25 и 60)
+INSERT INTO v_adult_guests_local (id, first_name, last_name, birth_date)
+VALUES (99901, 'Иван', 'Петров', CURRENT_DATE - INTERVAL '30 years');
 
--- 2.3 CASCADED CHECK OPTION
+-- должен ОШИБИТЬСЯ (ибо возраст 20 лет - младше 25)
+-- LOCAL проверяет только "младше 60", но базовое представление отфильтрует эту запись
+-- однако с LOCAL CHECK OPTION эта вставка МОЖЕТ пройти
+INSERT INTO v_adult_guests_local (id, first_name, last_name, birth_date)
+VALUES (99902, 'Мария', 'Иванова', CURRENT_DATE - INTERVAL '20 years');
+
+-- ошибка - НЕ проходит проверку v_adult_guests_local (старше 60 лет)
+INSERT INTO v_adult_guests_local (id, first_name, last_name, birth_date)
+VALUES (99903, 'Сергей', 'Сидоров', CURRENT_DATE - INTERVAL '65 years');
+
+-- для проверки
+SELECT * FROM v_adult_guests_local WHERE id BETWEEN 99901 AND 99905;
+SELECT * FROM guests WHERE id = 99902;
+
+
+-- 2.3 CASCADED CHECK OPTION (гости старше 25 лет с каскадной проверкой)
 CREATE OR REPLACE VIEW v_adult_guests_cascaded AS
 SELECT * FROM v_adult_guests
+WHERE birth_date >= (CURRENT_DATE - INTERVAL '60 years')
 WITH CASCADED CHECK OPTION;
 
--- для проверки 
-SELECT * FROM v_adult_guests_cascaded;
-
--- тесты 
--- Попытка вставить гостя, который младше 25 лет
+-- тесты
+-- ошибка - НЕ проходит проверку базового представления v_adult_guests (старше 60 лет)
 INSERT INTO v_adult_guests_cascaded (id, first_name, last_name, birth_date)
-VALUES (99901, 'Baby', 'Guest', CURRENT_DATE - INTERVAL '5 years');
--- Ожидаем ошибку
+VALUES (99904, 'Дмитрий', 'Волков', CURRENT_DATE - INTERVAL '65 years');
 
--- Попытка вставить гостя, который бы прошёл LOCAL, 
--- но НЕ ПРОХОДИТ v_adult_guests (то есть младше 25)
+-- успешно - проходит все проверки (возраст между 25 и 60 лет)
 INSERT INTO v_adult_guests_cascaded (id, first_name, last_name, birth_date)
-VALUES (99902, 'Test', 'Guest', CURRENT_DATE - INTERVAL '10 years');
--- Ожидаем ошибку
-
--- верная вставка
-INSERT INTO v_adult_guests_cascaded (id, first_name, last_name, birth_date)
-VALUES (99903, 'Senior', 'Guest', CURRENT_DATE - INTERVAL '55 years');
-
-DELETE FROM v_adult_guests_cascaded
-WHERE id = 99903;
+VALUES (99905, 'Андрей', 'Морозов', CURRENT_DATE - INTERVAL '45 years');
 
 -- для проверки 
-SELECT * FROM v_adult_guests_cascaded WHERE id = 99903;
+SELECT * FROM v_adult_guests_cascaded WHERE id BETWEEN 99901 AND 99905;
+
+-- очистка тестовых данных
+DELETE FROM guests WHERE id BETWEEN 99901 AND 99905;
+DROP VIEW v_adult_guests_cascaded;
+DROP VIEW v_adult_guests_local;
 
 
 
@@ -103,8 +113,7 @@ SELECT * FROM v_adult_guests_cascaded WHERE id = 99903;
 DROP MATERIALIZED VIEW IF EXISTS mv_dish_sales;
 CREATE MATERIALIZED VIEW mv_dish_sales AS
 SELECT 
-    d.id,
-    d.name,
+    d.id, d.name,
     COALESCE(SUM(oi.quantity), 0) AS total_quantity,
     COALESCE(SUM(oi.quantity * d.price), 0) AS total_revenue
 FROM dishes d
@@ -114,3 +123,9 @@ GROUP BY d.id;
 -- 3.2 индекс на материализованное представление
 DROP INDEX IF EXISTS idx_mv_dish_sales_revenue;
 CREATE INDEX idx_mv_dish_sales_revenue ON mv_dish_sales(total_revenue);
+
+SET enable_seqscan = OFF;
+EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
+SELECT * FROM mv_dish_sales
+WHERE total_revenue > 10000
+ORDER BY total_revenue DESC;
