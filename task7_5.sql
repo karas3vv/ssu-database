@@ -173,14 +173,14 @@ EXECUTE FUNCTION fn_before_insert_order_item_checks();
 CREATE OR REPLACE FUNCTION fn_after_insert_order_item_update_order_total()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
-    price NUMERIC;
+    price_var NUMERIC;
     delta NUMERIC;
 BEGIN
-    SELECT price INTO price FROM dishes WHERE id = NEW.dish_id;
-    IF price IS NULL THEN
-        price := 0;
+    SELECT d.price INTO price_var FROM dishes d WHERE d.id = NEW.dish_id;
+    IF price_var IS NULL THEN
+        price_var := 0;
     END IF;
-    delta := NEW.quantity * price;
+    delta := NEW.quantity * price_var;
 
     UPDATE orders
     SET total_amount = COALESCE(total_amount, 0) + delta
@@ -227,12 +227,12 @@ EXECUTE FUNCTION fn_after_delete_order_item_update_order_total();
 CREATE OR REPLACE FUNCTION fn_after_update_order_item_adjust_order_total()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
-    price NUMERIC;
+    price_var NUMERIC;
     delta NUMERIC;
 BEGIN
-    SELECT price INTO price FROM dishes WHERE id = NEW.dish_id;
-    IF price IS NULL THEN
-        price := 0;
+    SELECT d.price INTO price_var FROM dishes d WHERE d.id = NEW.dish_id;
+    IF price_var IS NULL THEN
+        price_var := 0;
     END IF;
 
     delta := (NEW.quantity - COALESCE(OLD.quantity,0)) * price;
@@ -332,8 +332,8 @@ SELECT * FROM bookings WHERE id = 5001; -- появилась бронь
 -- Демонстрация работы триггера заказа для тестовых id
 INSERT INTO orders (id, guest_id, table_id, waiter_id, order_time, total_amount, status)
 VALUES (6001, 2001, 1001, 3001, '2025-12-01 18:10', 500, 'paid');
-SELECT * FROM orders WHERE id = 6001;        -- новый заказ
-SELECT * FROM payments WHERE order_id = 6001;-- автоматически создан платёж
+SELECT * FROM orders WHERE id = 6001; -- новый заказ
+SELECT * FROM payments WHERE order_id = 6001; -- автоматически создан платёж
 
 -- Работа триггера с блюдами заказа: добавим тестовое блюдо и позицию
 INSERT INTO dishes (id, name, category, price) VALUES (4001, 'Салат', 'Закуска', 250);
@@ -356,7 +356,15 @@ DELETE FROM payments WHERE order_id = 6001;
 
 -- очистка / удаление триггеров 
 DROP TRIGGER IF EXISTS trg_check_booking_conflict_before ON bookings;
-DROP FUNCTION IF EXISTS fn_check_booking_conflict();
-
 DROP TRIGGER IF EXISTS trg_after_booking_mark_table_reserved ON bookings;
-DROP FUNCTION IF EXISTS fn_after_booking_mark_table_reserved();
+
+DROP TRIGGER IF EXISTS trg_before_insert_order_checks ON orders;
+DROP TRIGGER IF EXISTS trg_after_insert_order_create_payment ON orders;
+DROP TRIGGER IF EXISTS trg_after_delete_order_audit ON orders;
+
+DROP TRIGGER IF EXISTS trg_before_insert_order_item_checks ON order_items;
+DROP TRIGGER IF EXISTS trg_after_insert_order_item_update_order_total ON order_items;
+DROP TRIGGER IF EXISTS trg_after_delete_order_item_update_order_total ON order_items;
+DROP TRIGGER IF EXISTS trg_after_update_order_item_adjust_order_total ON order_items;
+
+DROP TRIGGER IF EXISTS trg_instead_of_insert_v_order_entry ON v_order_entry;
