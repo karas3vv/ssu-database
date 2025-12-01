@@ -46,7 +46,7 @@ FOR EACH ROW
 EXECUTE FUNCTION fn_check_booking_conflict();
 
 
--- 2. после успешной брони пометить стол как 'reserved' (AFTER INSERT ON bookings) (компенсирующее действие)
+-- 2. после успешной брони пометить стол как 'reserved' (AFTER INSERT ON bookings)
 CREATE OR REPLACE FUNCTION fn_after_booking_mark_table_reserved()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -203,10 +203,14 @@ DECLARE
     price NUMERIC;
     delta NUMERIC;
 BEGIN
-    SELECT price INTO price FROM dishes WHERE id = OLD.dish_id;
+    SELECT d.price INTO price
+    FROM dishes d
+    WHERE d.id = OLD.dish_id;
+
     IF price IS NULL THEN
         price := 0;
     END IF;
+
     delta := OLD.quantity * price;
 
     UPDATE orders
@@ -217,6 +221,7 @@ BEGIN
 END;
 $$;
 
+
 CREATE TRIGGER trg_after_delete_order_item_update_order_total
 AFTER DELETE ON order_items
 FOR EACH ROW
@@ -224,26 +229,30 @@ EXECUTE FUNCTION fn_after_delete_order_item_update_order_total();
 
 
 -- 8. AFTER UPDATE on order_items: скорректировать total_amount в заказе с учётом разницы
-CREATE OR REPLACE FUNCTION fn_after_update_order_item_adjust_order_total()
+CREATE OR REPLACE FUNCTION fn_after_delete_order_item_update_order_total()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     price_var NUMERIC;
     delta NUMERIC;
 BEGIN
-    SELECT d.price INTO price_var FROM dishes d WHERE d.id = NEW.dish_id;
+    SELECT d.price INTO price_var
+    FROM dishes d
+    WHERE d.id = OLD.dish_id;
+
     IF price_var IS NULL THEN
         price_var := 0;
     END IF;
 
-    delta := (NEW.quantity - COALESCE(OLD.quantity,0)) * price;
+    delta := OLD.quantity * price_var;
 
     UPDATE orders
-    SET total_amount = COALESCE(total_amount, 0) + delta
-    WHERE id = NEW.order_id;
+    SET total_amount = COALESCE(total_amount, 0) - delta
+    WHERE id = OLD.order_id;
 
-    RETURN NEW;
+    RETURN OLD;
 END;
 $$;
+
 
 CREATE TRIGGER trg_after_update_order_item_adjust_order_total
 AFTER UPDATE ON order_items
@@ -342,15 +351,87 @@ INSERT INTO order_items (order_id, dish_id, quantity) VALUES (6001, 4001, 2);
 SELECT * FROM order_items WHERE order_id = 6001;
 SELECT * FROM orders WHERE id = 6001; -- сумма заказа обновится
 
+-- AFTER DELETE on order_items: уменьшаем orders.total_amount
+
+-- до удаления позиции: смотрим заказ и его позиции
+SELECT * FROM orders WHERE id = 6001;
+SELECT * FROM order_items WHERE order_id = 6001;
+
+-- удаляем позицию заказа (сработает AFTER DELETE триггер)
+DELETE FROM order_items WHERE order_id = 6001 AND dish_id = 4001;
+
+-- после удаления: сумма заказа должна уменьшиться
+SELECT * FROM orders WHERE id = 6001;
+
+-- AFTER UPDATE on order_items: корректируем total_amount
+
+-- Создадим ещё одну тестовую позицию
+INSERT INTO dishes (id, name, category, price) VALUES (4002, 'Суп', 'Первое', 300);
+INSERT INTO order_items (order_id, dish_id, quantity) VALUES (6001, 4002, 1);
+
+-- До изменения количества
+SELECT * FROM orders WHERE id = 6001;
+SELECT * FROM order_items WHERE order_id = 6001;
+
+-- Увеличиваем количество блюда 4002 (сработает AFTER UPDATE триггер)
+UPDATE order_items
+SET quantity = 3
+WHERE order_id = 6001 AND dish_id = 4002;
+
+-- После изменения: сумма заказа должна увеличиться
+SELECT * FROM orders WHERE id = 6001;
+SELECT * FROM order_items WHERE order_id = 6001;
+
+-- INSTEAD OF INSERT на v_order_entry:
+-- вставляем заказ через представление, автоматически создаётся payment
+
+-- До вставки через view
+SELECT * FROM orders WHERE id >= 7000;
+SELECT * FROM payments WHERE order_id >= 7000;
+
+-- Вставка через представление (сработает INSTEAD OF триггер)
+INSERT INTO v_order_entry (guest_id, table_id, waiter_id, order_time, total_amount, status, booking_id)
+VALUES (200001, 1001, 3001, now(), 750, 'paid', 5001);
+
+-- После: появился новый заказ и платёж к нему
+SELECT * FROM orders ORDER BY id DESC LIMIT 3;
+SELECT * FROM payments ORDER BY id DESC LIMIT 3;
+
+-- AFTER DELETE на orders: запись в таблицу аудита
+
+-- Создадим отдельный тестовый заказ для удаления
+INSERT INTO orders (id, guest_id, table_id, waiter_id, order_time, total_amount, status)
+VALUES (7001, 200001, 1001, 3001, now(), 1234, 'canceled');
+
+-- До удаления: проверим orders и audit-таблицу
+SELECT * FROM orders WHERE id = 7001;
+SELECT * FROM orders_deletes_audit WHERE deleted_order_id = 7001;
+
+-- Удаляем заказ (сработает AFTER DELETE триггер)
+DELETE FROM orders WHERE id = 7001;
+
+-- После удаления: запись должна появиться в orders_deletes_audit
+SELECT * FROM orders_deletes_audit WHERE deleted_order_id = 7001;
+
+
+
 -- отчистка тестовых данных 
 DELETE FROM order_items WHERE order_id = 6001;
 DELETE FROM orders WHERE id = 6001;
 DELETE FROM bookings WHERE id = 5001;
-DELETE FROM dishes WHERE id = 4001;
+DELETE FROM dishes WHERE id IN (4001, 4002);
 DELETE FROM guests WHERE id = 200001;
 DELETE FROM waiters WHERE id = 3001;
 DELETE FROM tables WHERE id = 1001;
 DELETE FROM payments WHERE order_id = 6001;
+
+
+DELETE FROM payments WHERE order_id >= 7000;
+DELETE FROM orders WHERE id >= 7000;
+
+-- если создавался тестовый заказ 7001 для аудита
+DELETE FROM orders_deletes_audit WHERE deleted_order_id = 7001;
+DELETE FROM orders WHERE id = 7001;
 
 
 
