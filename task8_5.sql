@@ -24,25 +24,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 3. ФУНКЦИЯ СТАТИСТИКИ ПРОДАЖ БЛЮД
--- Возвращает таблицу dish_name / total_sold.
+-- 3. статистика продаж 
 CREATE OR REPLACE FUNCTION dishes_sales()
 RETURNS TABLE (
-    dish_name text,
-    total_sold bigint
-)
-LANGUAGE plpgsql AS $$
+    dish_name TEXT,
+    total_sold BIGINT,
+    total_revenue NUMERIC,
+    avg_price NUMERIC
+) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         d.name,
-        COALESCE(SUM(oi.quantity), 0)
+        COALESCE(SUM(oi.quantity), 0),
+        COALESCE(SUM(oi.quantity * d.price), 0),
+        COALESCE(AVG(oi.quantity * d.price)::NUMERIC(10,2), 0)
     FROM dishes d
     LEFT JOIN order_items oi ON d.id = oi.dish_id
     GROUP BY d.name
-    ORDER BY total_sold DESC;
+    ORDER BY 2 DESC;  -- ← 2 = вторая колонка (total_sold)
 END;
-$$;
+$$ LANGUAGE plpgsql;
+
+
 
 -- 4. функция списания продуктов по заказу
 -- использует цикл по order_items и вложенный цикл по составу блюда.
@@ -100,10 +104,42 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 6. статистика гостей
+DROP TYPE IF EXISTS guest_stats_type CASCADE;  -- очистка
+
+CREATE TYPE guest_stats_type AS (
+    guest_id INT,
+    full_name TEXT,
+    total_orders INT,
+    total_revenue NUMERIC,
+    avg_check NUMERIC
+);
+
+CREATE OR REPLACE FUNCTION guest_statistics(p_limit INT DEFAULT 10)
+RETURNS SETOF guest_stats_type AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        g.id,
+        CONCAT(g.last_name, ' ', LEFT(g.first_name, 1), '.')::TEXT,
+        COUNT(o.id)::INT,
+        COALESCE(SUM(p.amount), 0)::NUMERIC,
+        CASE WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(p.amount)/COUNT(o.id), 0) ELSE 0 END::NUMERIC
+    FROM guests g
+    LEFT JOIN orders o ON g.id = o.guest_id
+    LEFT JOIN payments p ON o.id = p.order_id
+    GROUP BY g.id, g.last_name, g.first_name
+    HAVING COUNT(o.id) > 0
+    ORDER BY 4 DESC  -- total_revenue
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+
 -- примеры вызовов
 
 -- 1. выручка за месяц
-SELECT get_revenue('2025-01-01', '2025-01-31');
+SELECT get_revenue('2025-11-01', '2025-11-30');
 
 -- 2. все заказы конкретного гостя
 SELECT * FROM guest_orders(42);
@@ -116,6 +152,10 @@ SELECT consume_products(150);
 
 -- 5. свободные столы
 SELECT * FROM free_tables('2025-02-15', '18:00', '20:00', 4);
+
+-- 6. статистика гостей
+SELECT * FROM guest_statistics(5);
+
 
 
 
