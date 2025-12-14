@@ -194,3 +194,22 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 COMMENT ON TABLE reviews IS 'Отзывы гостей о заказах';
 COMMENT ON COLUMN reviews.rating IS 'Оценка (1-5)';
+
+
+-- для интерфейса 
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    login TEXT NOT NULL UNIQUE,         -- логин для входа
+    password_hash TEXT NOT NULL,        -- хэш пароля
+    role TEXT NOT NULL CHECK (role IN ('admin', 'user'))  -- роль: администратор / пользователь
+);
+
+COMMENT ON TABLE users IS 'Пользователи системы';
+COMMENT ON COLUMN users.login IS 'Логин для входа';
+COMMENT ON COLUMN users.password_hash IS 'Хэш пароля';
+COMMENT ON COLUMN users.role IS 'Роль пользователя (admin или user)';
+
+INSERT INTO users (login, password_hash, role)
+VALUES
+('admin', 'admin_hashed', 'admin'),
+('user1', 'user1_hashed', 'user');

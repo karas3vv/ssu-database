@@ -229,7 +229,7 @@ EXECUTE FUNCTION fn_after_delete_order_item_update_order_total();
 
 
 -- 8. AFTER UPDATE on order_items: скорректировать total_amount в заказе с учётом разницы
-CREATE OR REPLACE FUNCTION fn_after_delete_order_item_update_order_total()
+CREATE OR REPLACE FUNCTION fn_after_update_order_item_adjust_order_total()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     price_var NUMERIC;
@@ -237,25 +237,23 @@ DECLARE
 BEGIN
     SELECT d.price INTO price_var
     FROM dishes d
-    WHERE d.id = OLD.dish_id;
+    WHERE d.id = NEW.dish_id;
 
-    IF price_var IS NULL THEN
-        price_var := 0;
-    END IF;
-
-    delta := OLD.quantity * price_var;
+    price_var := COALESCE(price_var, 0);
+    delta := (COALESCE(NEW.quantity, 0) - COALESCE(OLD.quantity, 0)) * price_var;
 
     UPDATE orders
-    SET total_amount = COALESCE(total_amount, 0) - delta
-    WHERE id = OLD.order_id;
+    SET total_amount = COALESCE(total_amount, 0) + delta
+    WHERE id = NEW.order_id;
 
-    RETURN OLD;
+    RETURN NEW;
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_after_update_order_item_adjust_order_total ON order_items;
 
 CREATE TRIGGER trg_after_update_order_item_adjust_order_total
-AFTER UPDATE ON order_items
+AFTER UPDATE OF quantity ON order_items
 FOR EACH ROW
 EXECUTE FUNCTION fn_after_update_order_item_adjust_order_total();
 
