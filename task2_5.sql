@@ -199,9 +199,9 @@ COMMENT ON COLUMN reviews.rating IS 'Оценка (1-5)';
 -- для интерфейса 
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
-    login TEXT NOT NULL UNIQUE,         -- логин для входа
-    password_hash TEXT NOT NULL,        -- хэш пароля
-    role TEXT NOT NULL CHECK (role IN ('admin', 'user'))  -- роль: администратор / пользователь
+    login TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL, 
+    role TEXT NOT NULL CHECK (role IN ('admin', 'user'))
 );
 
 COMMENT ON TABLE users IS 'Пользователи системы';
@@ -211,5 +211,8 @@ COMMENT ON COLUMN users.role IS 'Роль пользователя (admin или
 
 INSERT INTO users (login, password_hash, role)
 VALUES
-('admin', 'admin_hashed', 'admin'),
-('user1', 'user1_hashed', 'user');
+  ('admin', 'admin', 'admin'),
+  ('user1',  'user1',  'user')
+ON CONFLICT (login) DO UPDATE
+SET password_hash = EXCLUDED.password_hash,
+    role = EXCLUDED.role;
